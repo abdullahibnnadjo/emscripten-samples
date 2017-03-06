@@ -1,0 +1,25 @@
+[package]
+name = "hello-world-asmjs"
+version = "0.0.1"
+authors = ["Abdullah ibn Nadjo"]
+
+[profile.dev]
+rpath = false
+lto = true
+panic = "abort"
+
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+panic = "abort"
+
+[dependencies]
+libc = "0.2.0"
+
+[lib]
+name = "main"
+path = "src/lib.rs"

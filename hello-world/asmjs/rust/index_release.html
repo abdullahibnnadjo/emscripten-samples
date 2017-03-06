@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Emscripten</title>
+
+    <style>
+        h1 {
+            text-align: center;
+        }
+
+        #log-console {
+            width: 80%;
+            margin: auto;
+            color: white;
+            font-size: 20px;
+            min-height: 200px;
+            padding-top: 10px;
+            padding-left: 10px;
+            background-color: black;
+        }
+    </style>
+
+    <script>
+        // Define our module object.
+        // All our compiled and exported function will be there (in this case, the main)
+        var My_Module;
+
+        // Define the variable Module as an object before loading main.asm.js, which needs to be loaded before main.js
+        // Note : Here we're not using the 'var xxx = yyy' syntax, because we'll get rid of this variable as soon as we can
+        // (i.e. not polluting the global scope). See http://stackoverflow.com/questions/1596782/how-to-unset-a-javascript-variable
+        Module = {
+            // This function as nothing to do with emscripten, it's a simple callback
+            // It will be fired twice (each time one of our scripts is loaded)
+            scriptLoaded: function () {
+                // Do nothing the first time, and let it go the second time.
+                if (!this.shouldRun) {
+                    this.shouldRun = true;
+                    return;
+                }
+
+                // Retrieve those objects before delete Module
+                var asm = Module.asm;
+                var xhr = Module.memoryInitializerRequest;
+                delete Module;
+
+                // Start the Emscripten runtime.
+                My_Module = My_Module({
+                    // Emscripten needs those attributes
+                    asm: asm,
+                    memoryInitializerRequest: xhr,
+
+                    // The runtime don't call the main (as we requested with `-s INVOKE_RUN=0`)
+                    // So let it know what to do when it's ready to be used : here we simply call our main
+                    // This has a benefit, see below
+                    onRuntimeInitialized: function () {
+                        var main = (function () {
+                            // Delaying even 1ms is enough to allow compilation memory to be reclaimed
+                            // See https://kripken.github.io/emscripten-site/docs/optimizing/Optimizing-Code.html#avoid-memory-spikes-by-separating-out-asm-js
+                            // Note : We do that here, unlike the Emscripten example, because the `main.js` doesn't call the main directly
+                            // So let the browser's interpreter/compiler process `main.asm.js` and `main.js` files
+                            // (whose are light in this example, but can become very large - the js file of angrybots demo is 18MB for example),
+                            // give it a micro-pause for release memory (the 1ms delay) and run our main
+                            setTimeout(function (_main) {
+                                _main();
+                            }, 1, this._main);
+                        }).bind(this);
+
+                        // In case DOMContentLoaded was already fired, the document readyState will be one of "complete" or "interactive" or (nonstandard) "loaded".
+                        // The regexp above looks for all three states. A more readable regexp would be /complete|interactive|loaded/
+                        if (/comp|inter|loaded/.test(document.readyState)) {
+                            main();
+                        } else {
+                            // In case DOMContentLoaded was not yet fired, use it to run the "start" function when document is read for it.
+                            document.addEventListener('DOMContentLoaded', main);
+                        }
+                    }
+                });
+            }
+        };
+
+        // Load the .mem file the way Emscripten likes
+        // Wrap in a function to keep a clean scope
+        (function () {
+            var memoryInitializer = 'main.js.mem';
+            if (typeof Module['locateFile'] === 'function') {
+                memoryInitializer = Module['locateFile'](memoryInitializer);
+            } else if (Module['memoryInitializerPrefixURL']) {
+                memoryInitializer = Module['memoryInitializerPrefixURL'] + memoryInitializer;
+            }
+            var xhr = Module['memoryInitializerRequest'] = new XMLHttpRequest();
+            xhr.open('GET', memoryInitializer, true);
+            xhr.responseType = 'arraybuffer';
+            xhr.send(null);
+        })();
+    </script>
+    <!-- ✨ We can now load our scripts ✨ -->
+    <script src="main_release.js.min"     async onload="Module.scriptLoaded()"></script>
+    <script src="main_release.asm.js.min" async onload="Module.scriptLoaded()"></script>
+</head>
+
+<body>
+    <h1>Hello, this is Emscripten 🖥</h1>
+    <pre id="log-console"></pre>
+</body>
+
+</html>
